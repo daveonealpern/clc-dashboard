@@ -214,7 +214,7 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sa
       <div class="met-grid" id="cost-met" style="margin-bottom:14px"></div>
       <div class="card-flush">
         <table class="tbl">
-          <thead><tr><th>Category</th><th class="r">Amount</th><th class="r">Per Lot</th><th class="r">Running Total</th></tr></thead>
+          <thead><tr><th>Category</th><th class="r">Amount</th><th class="r">Per Lot (58)</th></tr></thead>
           <tbody id="cost-body"><tr><td colspan="4" class="empty">Loading...</td></tr></tbody>
         </table>
       </div>
@@ -550,25 +550,25 @@ function removeInvoice(id) {
 function renderCostTracker(rows) {
   const body = document.getElementById('cost-body');
   const metEl = document.getElementById('cost-met');
+  const LOTS = 58;
   const items = rows.filter(r=>{
     const c=(r['Category']||'').trim().toLowerCase();
     return c&&!c.includes('total');
   });
-  let run=0; items.forEach(r=>{run+=toNum(r['Amount'])||0;});
-  metEl.innerHTML=`<div class="met"><div class="met-lbl">Total spend to date</div><div class="met-val">${moneyF(run)}</div></div>`;
-  if (!items.length){body.innerHTML='<tr><td colspan="4" class="empty">No data yet in the Cost Tracker tab.</td></tr>';return;}
-  let rt=0;
+  let total=0; items.forEach(r=>{total+=toNum(r['Amount'])||0;});
+  metEl.innerHTML=`<div class="met"><div class="met-lbl">Total spend to date</div><div class="met-val">${moneyF(total)}</div></div>
+    <div class="met"><div class="met-lbl">Cost per lot (58)</div><div class="met-val" style="color:var(--gold)">${moneyF(total/LOTS)}</div></div>`;
+  if (!items.length){body.innerHTML='<tr><td colspan="3" class="empty">No data yet in the Cost Tracker tab.</td></tr>';return;}
   body.innerHTML = items.map(r=>{
-    const amt=toNum(r['Amount'])||0; rt+=amt;
-    const pl=toNum(r['Total']||r['Amount per Lot']||'');
+    const amt=toNum(r['Amount'])||0;
+    const perLot = amt ? amt/LOTS : null;
     return `<tr>
       <td>${(r['Category']||'').trim()}</td>
       <td class="r">${amt?money(amt):''}</td>
-      <td class="r">${pl&&pl>0?money(pl):''}</td>
-      <td class="r">${rt>0?moneyF(rt):''}</td>
+      <td class="r">${perLot?money(perLot):''}</td>
     </tr>`;
   }).join('');
-  body.innerHTML+=`<tr class="tot-row"><td>Total</td><td class="r"></td><td class="r"></td><td class="r">${moneyF(run)}</td></tr>`;
+  body.innerHTML+=`<tr class="tot-row"><td>Total</td><td class="r">${moneyF(total)}</td><td class="r">${moneyF(total/LOTS)}</td></tr>`;
 }
 
 // ── PSA ────────────────────────────────────────────────────────────────────
