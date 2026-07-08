@@ -340,6 +340,43 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sa
 
 </div>
 
+  <div style="padding:0 0 4px">
+    <div class="sec-hdr"><span class="sec-lbl">Contact List</span><div class="sec-line"></div></div>
+    <div class="card-flush">
+      <table class="tbl" id="contacts-table">
+        <thead><tr>
+          <th>Name</th><th>Company</th><th>Cell</th><th>Office</th><th>Email</th><th></th>
+        </tr></thead>
+        <tbody id="contacts-body"><tr><td colspan="6" class="empty">No contacts yet. Add one below.</td></tr></tbody>
+      </table>
+      <div class="add-row">
+        <div class="add-field">
+          <span class="add-field-lbl">Name</span>
+          <input class="add-input" type="text" id="ct-name" placeholder="Jane Smith">
+        </div>
+        <div class="add-field">
+          <span class="add-field-lbl">Company</span>
+          <input class="add-input" type="text" id="ct-company" placeholder="Southland Civil">
+        </div>
+        <div class="add-field">
+          <span class="add-field-lbl">Cell</span>
+          <input class="add-input" type="tel" id="ct-cell" placeholder="(805) 555-0100">
+        </div>
+        <div class="add-field">
+          <span class="add-field-lbl">Office</span>
+          <input class="add-input" type="tel" id="ct-office" placeholder="(805) 555-0101">
+        </div>
+        <div class="add-field" style="flex:2">
+          <span class="add-field-lbl">Email</span>
+          <input class="add-input" type="email" id="ct-email" placeholder="jane@southlandcivil.com">
+        </div>
+        <button class="add-btn" onclick="addContact()">+ Add</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
 <div class="footer">
   <span>
     <a href="https://docs.google.com/spreadsheets/d/16Jm_UxfJkyErhUBVBI6bfmGCx6zI3ZCzw78uLNFBQ2Q/edit" target="_blank">Private Sheet</a>
@@ -381,7 +418,9 @@ const MS_KEYS = [
 const INV_KEY = 'clc_inv_v2';
 const OI_KEY  = 'clc_oi_v2';
 const CAL_KEY  = 'clc_cal_v1';
+const CONTACTS_KEY = 'clc_contacts_v1';
 let localEvents = [];
+let contacts = [];
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 let calYear = TODAY.getFullYear(), calMonth = TODAY.getMonth();
 let allEvents = [], selectedDate = null;
@@ -440,12 +479,26 @@ function showToast(msg) {
 // ── HELPERS ────────────────────────────────────────────────────────────────
 function daysFrom(v) {
   if (!v) return null;
-  const d = new Date(v); d.setHours(0,0,0,0);
+  // Parse date string as local time, not UTC, to avoid timezone offset issues
+  let d;
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) {
+    const [yr, mo, dy] = v.trim().split('-').map(Number);
+    d = new Date(yr, mo - 1, dy);
+  } else {
+    d = new Date(v);
+  }
+  d.setHours(0,0,0,0);
   return isNaN(d) ? null : Math.round((d - TODAY) / 86400000);
 }
 function fmtDate(v) {
   if (!v) return 'TBD';
-  const d = new Date(v);
+  let d;
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) {
+    const [yr, mo, dy] = v.trim().split('-').map(Number);
+    d = new Date(yr, mo - 1, dy);
+  } else {
+    d = new Date(v);
+  }
   return isNaN(d) ? String(v) : d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
 function toNum(v) {
@@ -907,6 +960,61 @@ function renderEventList() {
   }).join('');
 }
 
+// ── CONTACTS ──────────────────────────────────────────────────────────────
+function renderContacts() {
+  const body = document.getElementById('contacts-body');
+  contacts = loadLS(CONTACTS_KEY);
+  if (!contacts.length) {
+    body.innerHTML = '<tr><td colspan="6" class="empty">No contacts yet. Add one below.</td></tr>';
+    return;
+  }
+  // Sort alphabetically by name
+  const sorted = [...contacts].sort((a,b) => a.name.localeCompare(b.name));
+  body.innerHTML = sorted.map(c => `<tr>
+    <td style="font-weight:500">${c.name||'&mdash;'}</td>
+    <td style="color:var(--mu);font-size:12px">${c.company||'&mdash;'}</td>
+    <td style="font-size:12px">
+      ${c.cell ? `<a href="tel:${c.cell}" style="color:var(--gold);text-decoration:none">${c.cell}</a>` : '&mdash;'}
+    </td>
+    <td style="font-size:12px">
+      ${c.office ? `<a href="tel:${c.office}" style="color:var(--mu);text-decoration:none">${c.office}</a>` : '&mdash;'}
+    </td>
+    <td style="font-size:12px">
+      ${c.email ? `<a href="mailto:${c.email}" style="color:var(--bt);text-decoration:none">${c.email}</a>` : '&mdash;'}
+    </td>
+    <td style="text-align:right">
+      <button class="rm-btn" onclick="removeContact('${c.id}')" title="Remove">&#10005;</button>
+    </td>
+  </tr>`).join('');
+}
+
+function addContact() {
+  const name    = document.getElementById('ct-name').value.trim();
+  const company = document.getElementById('ct-company').value.trim();
+  const cell    = document.getElementById('ct-cell').value.trim();
+  const office  = document.getElementById('ct-office').value.trim();
+  const email   = document.getElementById('ct-email').value.trim();
+
+  if (!name) { showToast('Name is required.'); return; }
+
+  contacts = loadLS(CONTACTS_KEY);
+  contacts.push({ id: 'ct_' + Date.now(), name, company, cell, office, email });
+  saveLS(CONTACTS_KEY, contacts);
+
+  ['ct-name','ct-company','ct-cell','ct-office','ct-email'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+
+  renderContacts();
+  showToast('Contact added.');
+}
+
+function removeContact(id) {
+  contacts = loadLS(CONTACTS_KEY).filter(x => x.id !== id);
+  saveLS(CONTACTS_KEY, contacts);
+  renderContacts();
+}
+
 // ── MAIN ────────────────────────────────────────────────────────────────────
 async function fetchAll() {
   document.getElementById('ts').textContent = 'Refreshing...';
@@ -915,10 +1023,12 @@ async function fetchAll() {
   localInvoices = loadLS(INV_KEY);
   localOI = loadLS(OI_KEY);
   localEvents = loadLS(CAL_KEY);
+  contacts = loadLS(CONTACTS_KEY);
   renderInvoiceTable();
   renderOpenItems();
   renderCalendar();
   renderUpcoming();
+  renderContacts();
 
   // Fetch all CSV sources independently
   safeCSV(CSV.countdowns).then(d => renderMilestones(d));
