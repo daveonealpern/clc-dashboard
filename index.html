@@ -106,6 +106,25 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sa
 .event-meta{font-size:11px;color:var(--mu);margin-top:2px}
 .toast{position:fixed;bottom:24px;right:24px;background:var(--s3);border:1px solid var(--gd);color:var(--txt);padding:10px 18px;border-radius:8px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.show{opacity:1}
+.cal-add-btn{background:var(--gp);border:1px solid var(--gd);color:var(--gold);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit}
+.cal-add-btn:hover{background:rgba(201,169,110,.16)}
+.cal-creator{background:var(--s2);border:1px solid var(--gd);border-radius:10px;padding:14px;margin-top:14px;display:none;flex-direction:column;gap:10px}
+.cal-creator.open{display:flex}
+.cal-creator-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.cal-creator-row-full{display:grid;grid-template-columns:1fr;gap:10px}
+.cal-creator-label{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+.cal-creator-input{background:var(--s1);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 10px;color:var(--txt);font-size:13px;font-family:inherit;outline:none;width:100%}
+.cal-creator-input:focus{border-color:var(--gold)}
+.cal-creator-footer{display:flex;justify-content:flex-end;gap:8px}
+.cal-cancel-btn{background:transparent;border:1px solid var(--faint);color:var(--mu);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit}
+.cal-cancel-btn:hover{border-color:var(--gd);color:var(--txt)}
+.upcoming-strip{margin-top:16px;border-top:1px solid var(--faint);padding-top:14px}
+.upcoming-lbl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+.upcoming-row{display:flex;align-items:flex-start;gap:10px;padding:7px 10px;background:var(--s2);border-radius:7px;margin-bottom:5px;border-left:3px solid}
+.upcoming-row:last-child{margin-bottom:0}
+.upcoming-days{font-size:11px;font-weight:700;min-width:32px;flex-shrink:0;padding-top:1px}
+.upcoming-title{font-size:13px;font-weight:500;color:var(--txt)}
+.upcoming-date{font-size:11px;color:var(--mu);margin-top:1px}
 .footer{padding:10px 24px;border-top:1px solid var(--bd);font-size:11px;color:var(--mu);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;max-width:1300px;margin:0 auto}
 .footer a{color:var(--gold);text-decoration:none}
 .empty{padding:20px;text-align:center;color:var(--mu);font-size:12px;font-style:italic}
@@ -260,11 +279,62 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sa
         <button class="cal-nav-btn" onclick="changeMonth(1)">&#8594;</button>
       </div>
       <div class="cal-grid" id="cal-grid"></div>
-      <div class="cal-legend">
-        <div class="cal-legend-item"><div class="cal-dot" style="background:var(--gold)"></div>Internal</div>
-        <div class="cal-legend-item"><div class="cal-dot" style="background:var(--bt)"></div>Consultant / Shared</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:10px">
+        <div class="cal-legend">
+          <div class="cal-legend-item"><div class="cal-dot" style="background:var(--gold)"></div>Internal</div>
+          <div class="cal-legend-item"><div class="cal-dot" style="background:var(--bt)"></div>Consultant / Shared</div>
+          <div class="cal-legend-item"><div class="cal-dot" style="background:var(--gt)"></div>Added here</div>
+        </div>
+        <button class="cal-add-btn" onclick="toggleCalCreator()">+ Add date</button>
       </div>
+
+      <!-- DATE CREATOR -->
+      <div class="cal-creator" id="cal-creator">
+        <div class="cal-creator-row">
+          <div>
+            <div class="cal-creator-label">Date</div>
+            <input class="cal-creator-input" type="date" id="ce-date">
+          </div>
+          <div>
+            <div class="cal-creator-label">Category</div>
+            <select class="cal-creator-input" id="ce-category">
+              <option value="Internal">Internal</option>
+              <option value="City Meeting">City Meeting</option>
+              <option value="Buyer Meeting">Buyer Meeting</option>
+              <option value="Lender Meeting">Lender Meeting</option>
+              <option value="Submittal">Submittal</option>
+              <option value="Deadline">Deadline</option>
+              <option value="Consultant Meeting">Consultant Meeting</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <div class="cal-creator-label">Attendees</div>
+            <input class="cal-creator-input" type="text" id="ce-attendees" placeholder="David, Gary...">
+          </div>
+        </div>
+        <div class="cal-creator-row-full">
+          <div>
+            <div class="cal-creator-label">Event title</div>
+            <input class="cal-creator-input" type="text" id="ce-title" placeholder="e.g. Meeting with City Planner">
+          </div>
+        </div>
+        <div class="cal-creator-row-full">
+          <div>
+            <div class="cal-creator-label">Notes</div>
+            <input class="cal-creator-input" type="text" id="ce-notes" placeholder="Optional notes...">
+          </div>
+        </div>
+        <div class="cal-creator-footer">
+          <button class="cal-cancel-btn" onclick="toggleCalCreator()">Cancel</button>
+          <button class="add-btn" onclick="addCalEvent()">Save date</button>
+        </div>
+      </div>
+
       <div class="event-list" id="event-list"></div>
+
+      <!-- UPCOMING 30 DAYS -->
+      <div class="upcoming-strip" id="upcoming-strip"></div>
     </div>
   </div>
 
@@ -310,6 +380,8 @@ const MS_KEYS = [
 
 const INV_KEY = 'clc_inv_v2';
 const OI_KEY  = 'clc_oi_v2';
+const CAL_KEY  = 'clc_cal_v1';
+let localEvents = [];
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 let calYear = TODAY.getFullYear(), calMonth = TODAY.getMonth();
 let allEvents = [], selectedDate = null;
@@ -693,6 +765,98 @@ function removeOI(id) {
   renderOpenItems();
 }
 
+// ── CALENDAR LOCAL EVENTS ──────────────────────────────────────────────────
+function toggleCalCreator() {
+  const el = document.getElementById('cal-creator');
+  el.classList.toggle('open');
+  if (el.classList.contains('open')) {
+    // Pre-fill date with selected date or today
+    const d = selectedDate || new Date().toISOString().split('T')[0];
+    document.getElementById('ce-date').value = d;
+    document.getElementById('ce-title').focus();
+  }
+}
+
+function addCalEvent() {
+  const date      = document.getElementById('ce-date').value;
+  const title     = document.getElementById('ce-title').value.trim();
+  const category  = document.getElementById('ce-category').value;
+  const attendees = document.getElementById('ce-attendees').value.trim();
+  const notes     = document.getElementById('ce-notes').value.trim();
+
+  if (!date)  { showToast('Please select a date.'); return; }
+  if (!title) { showToast('Please enter an event title.'); return; }
+
+  const newEvent = {
+    id: 'cal_' + Date.now(),
+    date, title, category, attendees, notes,
+    source: 'local'
+  };
+
+  localEvents.push(newEvent);
+  saveLS(CAL_KEY, localEvents);
+
+  // Clear form and close
+  ['ce-date','ce-title','ce-attendees','ce-notes'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('ce-category').value = 'Internal';
+  document.getElementById('cal-creator').classList.remove('open');
+
+  // Merge into allEvents and re-render
+  rebuildAllEvents();
+  showToast('Date added to calendar.');
+}
+
+function removeCalEvent(id) {
+  localEvents = localEvents.filter(x => x.id !== id);
+  saveLS(CAL_KEY, localEvents);
+  rebuildAllEvents();
+}
+
+function rebuildAllEvents() {
+  // Keep sheet events, re-add local events
+  allEvents = [
+    ...allEvents.filter(e => e.source === 'internal' || e.source === 'shared'),
+    ...localEvents.map(e => ({...e, source:'local'}))
+  ];
+  renderCalendar();
+  renderUpcoming();
+}
+
+function renderUpcoming() {
+  const el = document.getElementById('upcoming-strip');
+  const in30 = new Date(TODAY.getTime() + 30 * 86400000);
+  const upcoming = allEvents
+    .filter(e => {
+      const d = new Date(e.date); d.setHours(0,0,0,0);
+      return d >= TODAY && d <= in30;
+    })
+    .sort((a,b) => new Date(a.date) - new Date(b.date));
+
+  if (!upcoming.length) {
+    el.innerHTML = '<div class="upcoming-strip"><div class="upcoming-lbl">Upcoming — Next 30 Days</div><div style="font-size:12px;color:var(--mu);font-style:italic">No events in the next 30 days.</div></div>';
+    return;
+  }
+
+  const rows = upcoming.map(e => {
+    const days = daysFrom(e.date);
+    const color = e.source==='internal'?'var(--gold)':e.source==='local'?'var(--gt)':'var(--bt)';
+    const dc = days<=3?'var(--rt)':days<=7?'var(--yt)':'var(--gt)';
+    const removeBtn = e.source==='local'
+      ? `<button class="rm-btn" onclick="removeCalEvent('${e.id}')" title="Remove" style="margin-left:auto;flex-shrink:0">&#10005;</button>`
+      : '';
+    return `<div class="upcoming-row" style="border-left-color:${color}">
+      <div class="upcoming-days" style="color:${dc}">${days}d</div>
+      <div style="flex:1">
+        <div class="upcoming-title">${e.title}</div>
+        <div class="upcoming-date">${fmtDate(e.date)}${e.category?' &middot; '+e.category:''}${e.attendees?' &middot; '+e.attendees:''}</div>
+      </div>
+      ${removeBtn}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="upcoming-lbl">Upcoming &mdash; Next 30 Days</div>${rows}`;
+}
+
 // ── CALENDAR ────────────────────────────────────────────────────────────────
 function renderCalendar() {
   const lbl=document.getElementById('cal-month-lbl');
@@ -708,7 +872,7 @@ function renderCalendar() {
     const isToday=TODAY.getFullYear()===calYear&&TODAY.getMonth()===calMonth&&TODAY.getDate()===d;
     const isSel=selectedDate===ds;
     const evs=allEvents.filter(e=>{const ed=new Date(e.date);ed.setHours(0,0,0,0);return ed.getFullYear()===calYear&&ed.getMonth()===calMonth&&ed.getDate()===d;});
-    const dots=evs.map(e=>`<div class="cal-dot" style="background:${e.source==='internal'?'var(--gold)':'var(--bt)'}"></div>`).join('');
+    const dots=evs.map(e=>`<div class="cal-dot" style="background:${e.source==='internal'?'var(--gold)':e.source==='local'?'var(--gt)':'var(--bt)'}"></div>`).join('');
     h+=`<div class="cal-cell${isToday?' today':''}${isSel?' selected':''}" onclick="selectDate('${ds}')">
       <div class="cal-num">${d}</div><div class="cal-dots">${dots}</div></div>`;
   }
@@ -728,15 +892,17 @@ function renderEventList() {
     :allEvents.filter(e=>{const ed=new Date(e.date);ed.setHours(0,0,0,0);return ed.getFullYear()===calYear&&ed.getMonth()===calMonth;}).sort((a,b)=>new Date(a.date)-new Date(b.date));
   if (!evs.length){el.innerHTML=`<div style="font-size:12px;color:var(--mu);font-style:italic;padding:6px 0">${selectedDate?'No events on this date.':'No events this month.'}</div>`;return;}
   el.innerHTML=evs.map(e=>{
-    const color=e.source==='internal'?'var(--gold)':'var(--bt)';
+    const color=e.source==='internal'?'var(--gold)':e.source==='local'?'var(--gt)':'var(--bt)';
     const meta=[e.category,e.attendees].filter(Boolean).join(' &middot; ');
-    return `<div class="event-row" style="border-left-color:${color}">
+    const removeBtn=e.source==='local'?`<button class="rm-btn" onclick="removeCalEvent('${e.id}')" title="Remove">&#10005;</button>`:'';
+    return `<div class="event-row" style="border-left-color:${color};display:flex;align-items:flex-start;gap:12px">
       <div class="event-date-col">${fmtDate(e.date)}</div>
-      <div>
+      <div style="flex:1">
         <div class="event-title">${e.title}</div>
         ${meta?`<div class="event-meta">${meta}</div>`:''}
         ${e.notes?`<div class="event-meta" style="font-style:italic">${e.notes}</div>`:''}
       </div>
+      ${removeBtn}
     </div>`;
   }).join('');
 }
@@ -748,9 +914,11 @@ async function fetchAll() {
   // Show local data immediately
   localInvoices = loadLS(INV_KEY);
   localOI = loadLS(OI_KEY);
+  localEvents = loadLS(CAL_KEY);
   renderInvoiceTable();
   renderOpenItems();
   renderCalendar();
+  renderUpcoming();
 
   // Fetch all CSV sources independently
   safeCSV(CSV.countdowns).then(d => renderMilestones(d));
@@ -780,8 +948,10 @@ async function fetchAll() {
         category:(r['Category']||'').trim(), attendees:(r['Attendees']||'').trim(),
         notes:(r['Notes']||'').trim(), source:'shared'
       })),
+      ...localEvents.map(e=>({...e, source:'local'})),
     ];
     renderCalendar();
+    renderUpcoming();
   });
 
   const ts = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
