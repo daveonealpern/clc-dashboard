@@ -338,9 +338,7 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sa
     </div>
   </div>
 
-</div>
-
-  <div style="padding:0 0 4px">
+  <div>
     <div class="sec-hdr"><span class="sec-lbl">Contact List</span><div class="sec-line"></div></div>
     <div class="card-flush">
       <table class="tbl" id="contacts-table">
@@ -878,12 +876,21 @@ function rebuildAllEvents() {
 function renderUpcoming() {
   const el = document.getElementById('upcoming-strip');
   const in30 = new Date(TODAY.getTime() + 30 * 86400000);
+  function parseLocalDate(v) {
+    const ds = String(v||'').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) {
+      const [yr,mo,dy] = ds.split('-').map(Number);
+      const d = new Date(yr, mo-1, dy); d.setHours(0,0,0,0); return d;
+    }
+    const d = new Date(ds); d.setHours(0,0,0,0); return d;
+  }
   const upcoming = allEvents
     .filter(e => {
-      const d = new Date(e.date); d.setHours(0,0,0,0);
-      return d >= TODAY && d <= in30;
+      if (!e.date) return false;
+      const d = parseLocalDate(e.date);
+      return !isNaN(d) && d >= TODAY && d <= in30;
     })
-    .sort((a,b) => new Date(a.date) - new Date(b.date));
+    .sort((a,b) => parseLocalDate(a.date) - parseLocalDate(b.date));
 
   if (!upcoming.length) {
     el.innerHTML = '<div class="upcoming-strip"><div class="upcoming-lbl">Upcoming — Next 30 Days</div><div style="font-size:12px;color:var(--mu);font-style:italic">No events in the next 30 days.</div></div>';
@@ -924,7 +931,17 @@ function renderCalendar() {
     const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const isToday=TODAY.getFullYear()===calYear&&TODAY.getMonth()===calMonth&&TODAY.getDate()===d;
     const isSel=selectedDate===ds;
-    const evs=allEvents.filter(e=>{const ed=new Date(e.date);ed.setHours(0,0,0,0);return ed.getFullYear()===calYear&&ed.getMonth()===calMonth&&ed.getDate()===d;});
+    const evs=allEvents.filter(e=>{
+      if (!e.date) return false;
+      let ed;
+      const ds = String(e.date).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) {
+        const [yr,mo,dy]=ds.split('-').map(Number);
+        ed=new Date(yr,mo-1,dy);
+      } else { ed=new Date(ds); }
+      ed.setHours(0,0,0,0);
+      return ed.getFullYear()===calYear&&ed.getMonth()===calMonth&&ed.getDate()===d;
+    });
     const dots=evs.map(e=>`<div class="cal-dot" style="background:${e.source==='internal'?'var(--gold)':e.source==='local'?'var(--gt)':'var(--bt)'}"></div>`).join('');
     h+=`<div class="cal-cell${isToday?' today':''}${isSel?' selected':''}" onclick="selectDate('${ds}')">
       <div class="cal-num">${d}</div><div class="cal-dots">${dots}</div></div>`;
@@ -941,8 +958,30 @@ function changeMonth(dir){calMonth+=dir;if(calMonth>11){calMonth=0;calYear++;}if
 function renderEventList() {
   const el=document.getElementById('event-list');
   let evs=selectedDate
-    ?allEvents.filter(e=>{const ed=new Date(e.date);ed.setHours(0,0,0,0);return ed.getTime()===new Date(selectedDate).setHours(0,0,0,0);})
-    :allEvents.filter(e=>{const ed=new Date(e.date);ed.setHours(0,0,0,0);return ed.getFullYear()===calYear&&ed.getMonth()===calMonth;}).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    ?allEvents.filter(e=>{
+      if (!e.date) return false;
+      const ds=String(e.date).trim();
+      let ed;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ds)){const [yr,mo,dy]=ds.split('-').map(Number);ed=new Date(yr,mo-1,dy);}
+      else ed=new Date(ds);
+      ed.setHours(0,0,0,0);
+      const [syr,smo,sdy]=selectedDate.split('-').map(Number);
+      const sd=new Date(syr,smo-1,sdy);
+      return ed.getTime()===sd.getTime();
+    })
+    :allEvents.filter(e=>{
+      if (!e.date) return false;
+      const ds=String(e.date).trim();
+      let ed;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ds)){const [yr,mo,dy]=ds.split('-').map(Number);ed=new Date(yr,mo-1,dy);}
+      else ed=new Date(ds);
+      ed.setHours(0,0,0,0);
+      return ed.getFullYear()===calYear&&ed.getMonth()===calMonth;
+    }).sort((a,b)=>{
+      const [ay,am,ad]=String(a.date).split('-').map(Number);
+      const [by,bm,bd]=String(b.date).split('-').map(Number);
+      return new Date(ay,am-1,ad)-new Date(by,bm-1,bd);
+    });
   if (!evs.length){el.innerHTML=`<div style="font-size:12px;color:var(--mu);font-style:italic;padding:6px 0">${selectedDate?'No events on this date.':'No events this month.'}</div>`;return;}
   el.innerHTML=evs.map(e=>{
     const color=e.source==='internal'?'var(--gold)':e.source==='local'?'var(--gt)':'var(--bt)';
