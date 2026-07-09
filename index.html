@@ -31,6 +31,8 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sa
 .sec-lbl{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);white-space:nowrap}
 .sec-line{flex:1;height:1px;background:var(--gd)}
 .card{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:16px 18px}
+.row-2col{display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:24px;align-items:start}
+@media (max-width:900px){.row-2col{grid-template-columns:1fr}}
 .card-flush{background:var(--s1);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
 .met-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px}
 .met{background:var(--s2);border-radius:8px;padding:12px 14px;border:1px solid var(--bd)}
@@ -227,38 +229,40 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sa
     </div>
   </div>
 
-  <div>
-    <div class="sec-hdr"><span class="sec-lbl">Project Cost Tracker</span><div class="sec-line"></div></div>
-    <div class="card">
-      <div class="met-grid" id="cost-met" style="margin-bottom:14px"></div>
-      <div class="card-flush">
-        <table class="tbl">
-          <thead><tr><th>Category</th><th class="r">Amount</th><th class="r">Per Lot (58)</th></tr></thead>
-          <tbody id="cost-body"><tr><td colspan="4" class="empty">Loading...</td></tr></tbody>
-        </table>
+  <div class="row-2col">
+    <div>
+      <div class="sec-hdr"><span class="sec-lbl">Project Cost Tracker</span><div class="sec-line"></div></div>
+      <div class="card">
+        <div class="met-grid" id="cost-met" style="margin-bottom:14px"></div>
+        <div class="card-flush">
+          <table class="tbl">
+            <thead><tr><th>Category</th><th class="r">Amount</th><th class="r">Per Lot (58)</th></tr></thead>
+            <tbody id="cost-body"><tr><td colspan="4" class="empty">Loading...</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
-  </div>
 
-  <div>
-    <div class="sec-hdr"><span class="sec-lbl">Improvement Budget</span><div class="sec-line"></div></div>
-    <div class="card">
-      <div class="met-grid" id="budget-met" style="margin-bottom:14px"></div>
-      <div class="card-flush" style="margin-bottom:18px">
-        <table class="tbl">
-          <thead><tr><th>Line Item</th><th>Contractor</th><th class="r">Assumed Budget</th><th class="r">Revisions</th><th class="r">Current Budget</th></tr></thead>
-          <tbody id="budget-body"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody>
-        </table>
-      </div>
-
-      <div class="sec-lbl" style="font-size:10px;margin-bottom:8px">Budget Notes</div>
-      <div id="budget-notes-list" style="margin-bottom:12px"></div>
-      <div style="display:flex;gap:8px;align-items:flex-end">
-        <div style="flex:1">
-          <div class="add-field-lbl" style="margin-bottom:4px">Add a note</div>
-          <textarea id="budget-note-input" class="add-input" rows="2" style="resize:vertical;font-family:inherit"></textarea>
+    <div>
+      <div class="sec-hdr"><span class="sec-lbl">Improvement Budget</span><div class="sec-line"></div></div>
+      <div class="card">
+        <div class="met-grid" id="budget-met" style="margin-bottom:14px"></div>
+        <div class="card-flush" style="margin-bottom:18px">
+          <table class="tbl">
+            <thead><tr><th>Line Item</th><th>Contractor</th><th class="r">Assumed Budget</th><th class="r">Assumed $/Lot</th><th class="r">Revisions</th><th class="r">Current Budget</th><th class="r">Current $/Lot</th></tr></thead>
+            <tbody id="budget-body"><tr><td colspan="7" class="empty">Loading...</td></tr></tbody>
+          </table>
         </div>
-        <button class="add-btn" onclick="addBudgetNote()">+ Add</button>
+
+        <div class="sec-lbl" style="font-size:10px;margin-bottom:8px">Budget Notes</div>
+        <div id="budget-notes-list" style="margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div style="flex:1">
+            <div class="add-field-lbl" style="margin-bottom:4px">Add a note</div>
+            <textarea id="budget-note-input" class="add-input" rows="2" style="resize:vertical;font-family:inherit"></textarea>
+          </div>
+          <button class="add-btn" onclick="addBudgetNote()">+ Add</button>
+        </div>
       </div>
     </div>
   </div>
@@ -780,11 +784,12 @@ function budgetArrow(pct) {
 function renderBudget(rows) {
   const body = document.getElementById('budget-body');
   const metEl = document.getElementById('budget-met');
+  const LOTS = 58;
 
   // Real rows only: skip the blank spacer rows in the sheet
   const items = rows.filter(r => (r['Line Item']||'').trim());
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="5" class="empty">No data yet in the Improvement Budget tab.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="empty">No data yet in the Improvement Budget tab.</td></tr>';
     metEl.innerHTML = '';
     return;
   }
@@ -813,6 +818,8 @@ function renderBudget(rows) {
     const assumed = parseMoneySigned(r['Assumed Budget']);
     const revisions = parseMoneySigned(r['Revisions']);
     const current = parseMoneySigned(r['Current Budget']);
+    const assumedPerLot = assumed / LOTS;
+    const currentPerLot = current / LOTS;
     const revColor = revisions < 0 ? 'var(--gt)' : (revisions > 0 ? 'var(--rt)' : 'var(--mu)');
     const revArrow = revisions < 0 ? '&#9660;' : (revisions > 0 ? '&#9650;' : '');
     const rowStyle = isTotal ? ' style="font-weight:700;border-top:1px solid var(--gd)"' : (isContingency ? ' style="font-style:italic;color:var(--mu)"' : '');
@@ -820,8 +827,10 @@ function renderBudget(rows) {
       <td>${lineItem}</td>
       <td style="color:var(--mu);font-size:12px">${(r['Contractor']||'').trim()||'&mdash;'}</td>
       <td class="r">${assumed?moneyF(assumed):'&mdash;'}</td>
+      <td class="r" style="color:var(--mu)">${assumed?moneyF(assumedPerLot):'&mdash;'}</td>
       <td class="r" style="color:${revColor}">${revisions?revArrow+' '+moneyF(Math.abs(revisions)):'&mdash;'}</td>
       <td class="r">${current?moneyF(current):'&mdash;'}</td>
+      <td class="r" style="color:var(--mu)">${current?moneyF(currentPerLot):'&mdash;'}</td>
     </tr>`;
   }).join('');
 }
