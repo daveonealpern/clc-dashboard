@@ -400,6 +400,7 @@ const CSV = {
   openItems:     'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrOOVXmkJeFONoIssgv-9FzVot0Pp5BY4VcSNWk3LMFKpjLuQHS9CNZZDgYvg2GRXrj_UMJvvBAEH-/pub?gid=388924802&single=true&output=csv',
   calShared:     'https://docs.google.com/spreadsheets/d/e/2PACX-1vRrfb42fBKkb4CXkE2DPhRQV62ztcwAkDT-W6Z5RDsgvu78wIe3UXoiaIl565DYSVKy4ppEC_b7cl96/pub?gid=1815266820&single=true&output=csv',
   planStatus:    'https://docs.google.com/spreadsheets/d/e/2PACX-1vRrfb42fBKkb4CXkE2DPhRQV62ztcwAkDT-W6Z5RDsgvu78wIe3UXoiaIl565DYSVKy4ppEC_b7cl96/pub?gid=1125321175&single=true&output=csv',
+  contacts:      'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrOOVXmkJeFONoIssgv-9FzVot0Pp5BY4VcSNWk3LMFKpjLuQHS9CNZZDgYvg2GRXrj_UMJvvBAEH-/pub?gid=472386260&single=true&output=csv',
 };
 
 const MS_KEYS = [
@@ -421,7 +422,7 @@ const CONTACTS_KEY = 'clc_contacts_v1';
 // Apps Script write-back relay — sends new entries to the private sheet
 const WRITE_URL = 'https://script.google.com/macros/s/AKfycbxk4JKzdE7S2gyAE_vVab-G3_5LWRlHJRGGuTSAWXXRM7VBrfmUtdLevLgoKSsY_JjnVg/exec';
 let localEvents = [];
-let contacts = [];
+let sheetContacts = [], localContacts = [];
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 let calYear = TODAY.getFullYear(), calMonth = TODAY.getMonth();
 let allEvents = [], selectedDate = null;
@@ -1036,14 +1037,26 @@ function renderEventList() {
 // ── CONTACTS ──────────────────────────────────────────────────────────────
 function renderContacts() {
   const body = document.getElementById('contacts-body');
-  contacts = loadLS(CONTACTS_KEY);
-  if (!contacts.length) {
+  const sheetRows = sheetContacts.map(r => ({
+    id:null, name:(r['Name']||'').trim(), company:(r['Company']||'').trim(),
+    cell:(r['Cell']||'').trim(), office:(r['Office']||'').trim(),
+    email:(r['Email']||'').trim(), source:'sheet'
+  })).filter(r => r.name);
+  const localRows = localContacts.map(c => ({...c, source:'local'}));
+  const all = [...sheetRows, ...localRows];
+  if (!all.length) {
     body.innerHTML = '<tr><td colspan="6" class="empty">No contacts yet. Add one below.</td></tr>';
     return;
   }
-  // Sort alphabetically by name
-  const sorted = [...contacts].sort((a,b) => a.name.localeCompare(b.name));
-  body.innerHTML = sorted.map(c => `<tr>
+  const sorted = [...all].sort((a,b) => a.name.localeCompare(b.name));
+  body.innerHTML = sorted.map(c => {
+    const srcHtml = c.source==='sheet'
+      ? '<span class="src-badge">Sheet</span>'
+      : '<span class="src-badge src-local">Local</span>';
+    const rmHtml = c.id
+      ? `<button class="rm-btn" onclick="removeContact('${c.id}')" title="Remove">&#10005;</button>`
+      : `<button class="rm-btn" onclick="this.closest('tr').remove()" title="Remove">&#10005;</button>`;
+    return `<tr>
     <td style="font-weight:500">${c.name||'&mdash;'}</td>
     <td style="color:var(--mu);font-size:12px">${c.company||'&mdash;'}</td>
     <td style="font-size:12px">
@@ -1055,10 +1068,9 @@ function renderContacts() {
     <td style="font-size:12px">
       ${c.email ? `<a href="mailto:${c.email}" style="color:var(--bt);text-decoration:none">${c.email}</a>` : '&mdash;'}
     </td>
-    <td style="text-align:right">
-      <button class="rm-btn" onclick="removeContact('${c.id}')" title="Remove">&#10005;</button>
-    </td>
-  </tr>`).join('');
+    <td style="text-align:right;white-space:nowrap">${srcHtml} ${rmHtml}</td>
+  </tr>`;
+  }).join('');
 }
 
 async function addContact() {
@@ -1070,9 +1082,8 @@ async function addContact() {
 
   if (!name) { showToast('Name is required.'); return; }
 
-  contacts = loadLS(CONTACTS_KEY);
-  contacts.push({ id: 'ct_' + Date.now(), name, company, cell, office, email });
-  saveLS(CONTACTS_KEY, contacts);
+  localContacts.push({ id: 'ct_' + Date.now(), name, company, cell, office, email });
+  saveLS(CONTACTS_KEY, localContacts);
 
   ['ct-name','ct-company','ct-cell','ct-office','ct-email'].forEach(id => {
     document.getElementById(id).value = '';
@@ -1085,8 +1096,8 @@ async function addContact() {
 }
 
 function removeContact(id) {
-  contacts = loadLS(CONTACTS_KEY).filter(x => x.id !== id);
-  saveLS(CONTACTS_KEY, contacts);
+  localContacts = localContacts.filter(x => x.id !== id);
+  saveLS(CONTACTS_KEY, localContacts);
   renderContacts();
 }
 
@@ -1098,7 +1109,7 @@ async function fetchAll() {
   localInvoices = loadLS(INV_KEY);
   localOI = loadLS(OI_KEY);
   localEvents = loadLS(CAL_KEY);
-  contacts = loadLS(CONTACTS_KEY);
+  localContacts = loadLS(CONTACTS_KEY);
   renderInvoiceTable();
   renderOpenItems();
   renderCalendar();
@@ -1130,6 +1141,16 @@ async function fetchAll() {
     );
     if (localInvoices.length !== before) saveLS(INV_KEY, localInvoices);
     renderInvoiceTable();
+  });
+  safeCSV(CSV.contacts).then(d => {
+    sheetContacts = d.filter(r => (r['Name']||'').trim());
+    const before = localContacts.length;
+    localContacts = pruneSynced(localContacts, sheetContacts, (loc, s) =>
+      (loc.name||'').trim() === (s['Name']||'').trim() &&
+      (loc.company||'').trim() === (s['Company']||'').trim()
+    );
+    if (localContacts.length !== before) saveLS(CONTACTS_KEY, localContacts);
+    renderContacts();
   });
 
   // Merge both calendars
