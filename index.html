@@ -241,6 +241,29 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sa
   </div>
 
   <div>
+    <div class="sec-hdr"><span class="sec-lbl">Improvement Budget</span><div class="sec-line"></div></div>
+    <div class="card">
+      <div class="met-grid" id="budget-met" style="margin-bottom:14px"></div>
+      <div class="card-flush" style="margin-bottom:18px">
+        <table class="tbl">
+          <thead><tr><th>Line Item</th><th>Contractor</th><th class="r">Assumed Budget</th><th class="r">Revisions</th><th class="r">Current Budget</th></tr></thead>
+          <tbody id="budget-body"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="sec-lbl" style="font-size:10px;margin-bottom:8px">Budget Notes</div>
+      <div id="budget-notes-list" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <div style="flex:1">
+          <div class="add-field-lbl" style="margin-bottom:4px">Add a note</div>
+          <textarea id="budget-note-input" class="add-input" rows="2" style="resize:vertical;font-family:inherit"></textarea>
+        </div>
+        <button class="add-btn" onclick="addBudgetNote()">+ Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
     <div class="sec-hdr"><span class="sec-lbl">PSA &amp; Escrow</span><div class="sec-line"></div></div>
     <div class="card">
       <div id="psa-note" style="display:none;background:var(--gp);border:1px solid var(--gd);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--gold)"></div>
@@ -401,6 +424,7 @@ const CSV = {
   calShared:     'https://docs.google.com/spreadsheets/d/e/2PACX-1vRrfb42fBKkb4CXkE2DPhRQV62ztcwAkDT-W6Z5RDsgvu78wIe3UXoiaIl565DYSVKy4ppEC_b7cl96/pub?gid=1815266820&single=true&output=csv',
   planStatus:    'https://docs.google.com/spreadsheets/d/e/2PACX-1vRrfb42fBKkb4CXkE2DPhRQV62ztcwAkDT-W6Z5RDsgvu78wIe3UXoiaIl565DYSVKy4ppEC_b7cl96/pub?gid=1125321175&single=true&output=csv',
   contacts:      'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrOOVXmkJeFONoIssgv-9FzVot0Pp5BY4VcSNWk3LMFKpjLuQHS9CNZZDgYvg2GRXrj_UMJvvBAEH-/pub?gid=472386260&single=true&output=csv',
+  budget:        'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrOOVXmkJeFONoIssgv-9FzVot0Pp5BY4VcSNWk3LMFKpjLuQHS9CNZZDgYvg2GRXrj_UMJvvBAEH-/pub?gid=1909609231&single=true&output=csv',
 };
 
 const MS_KEYS = [
@@ -418,11 +442,13 @@ const INV_KEY = 'clc_inv_v2';
 const OI_KEY  = 'clc_oi_v2';
 const CAL_KEY  = 'clc_cal_v1';
 const CONTACTS_KEY = 'clc_contacts_v1';
+const BUDGET_NOTES_KEY = 'clc_budget_notes_v1';
 
 // Apps Script write-back relay — sends new entries to the private sheet
 const WRITE_URL = 'https://script.google.com/macros/s/AKfycbxk4JKzdE7S2gyAE_vVab-G3_5LWRlHJRGGuTSAWXXRM7VBrfmUtdLevLgoKSsY_JjnVg/exec';
 let localEvents = [];
 let sheetContacts = [], localContacts = [];
+let localBudgetNotes = [];
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 let calYear = TODAY.getFullYear(), calMonth = TODAY.getMonth();
 let allEvents = [], selectedDate = null;
@@ -532,6 +558,20 @@ function toNum(v) {
   if (v===null||v===undefined||v==='') return null;
   const n = Number(String(v).replace(/[$,\s]/g,''));
   return isNaN(n) ? null : n;
+}
+// Handles the Improvement Budget tab's format, where negative values are
+// shown in parentheses, e.g. "$ (254,750.00)".
+function parseMoneySigned(v) {
+  if (v===null||v===undefined) return 0;
+  let s = String(v).trim();
+  if (!s || s === '-' || s === '$-' || s === '$ -') return 0;
+  let neg = false;
+  if (s.includes('(') && s.includes(')')) { neg = true; }
+  s = s.replace(/[$,()\s]/g,'');
+  if (!s) return 0;
+  const n = Number(s);
+  if (isNaN(n)) return 0;
+  return neg ? -n : n;
 }
 function money(v, fallback) {
   const n = toNum(v);
@@ -723,6 +763,105 @@ function renderCostTracker(rows) {
     </tr>`;
   }).join('');
   body.innerHTML+=`<tr class="tot-row"><td>Total</td><td class="r">${moneyF(total)}</td><td class="r">${moneyF(total/LOTS)}</td></tr>`;
+}
+
+// ── IMPROVEMENT BUDGET ──────────────────────────────────────────────────────
+function budgetArrow(pct) {
+  // Decrease = good (green, down arrow). Increase = bad (red, up arrow).
+  if (pct === null || Math.abs(pct) < 0.005) {
+    return `<span style="color:var(--mu)">&#8212;</span>`;
+  }
+  if (pct < 0) {
+    return `<span style="color:var(--gt)">&#9660; ${Math.abs(pct).toFixed(1)}%</span>`;
+  }
+  return `<span style="color:var(--rt)">&#9650; ${pct.toFixed(1)}%</span>`;
+}
+
+function renderBudget(rows) {
+  const body = document.getElementById('budget-body');
+  const metEl = document.getElementById('budget-met');
+
+  // Real rows only: skip the blank spacer rows in the sheet
+  const items = rows.filter(r => (r['Line Item']||'').trim());
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">No data yet in the Improvement Budget tab.</td></tr>';
+    metEl.innerHTML = '';
+    return;
+  }
+
+  // The three section totals ("Total, CONSTRUCTION", "Total, CONSULTANTS",
+  // "Total, PERMITS, BONDS, FEES") sum to the full project budget — adding
+  // them up here gives the project total without depending on there being
+  // (or not being) a combined grand-total row further down the sheet.
+  const totalRows = items.filter(r => /^total,/i.test((r['Line Item']||'').trim()));
+  const totalAssumed = totalRows.reduce((s,r)=>s+parseMoneySigned(r['Assumed Budget']), 0);
+  const totalCurrent = totalRows.reduce((s,r)=>s+parseMoneySigned(r['Current Budget']), 0);
+  const totalVariance = totalCurrent - totalAssumed;
+  const variancePct = totalAssumed ? (totalVariance/totalAssumed*100) : null;
+
+  metEl.innerHTML = `
+    <div class="met"><div class="met-lbl">Assumed budget</div><div class="met-val">${moneyF(totalAssumed)}</div></div>
+    <div class="met"><div class="met-lbl">Current budget</div><div class="met-val" style="color:var(--gold)">${moneyF(totalCurrent)}</div></div>
+    <div class="met"><div class="met-lbl">Net change</div><div class="met-val" style="color:${totalVariance<0?'var(--gt)':(totalVariance>0?'var(--rt)':'var(--mu)')}">${totalVariance===0?'&#8212;':(totalVariance<0?'-':'+')+moneyF(Math.abs(totalVariance))}</div></div>
+    <div class="met"><div class="met-lbl">Variance vs. assumed</div><div class="met-val">${budgetArrow(variancePct)}</div></div>
+  `;
+
+  body.innerHTML = items.map(r => {
+    const lineItem = (r['Line Item']||'').trim();
+    const isTotal = /^total,/i.test(lineItem);
+    const isContingency = /^contingency$/i.test(lineItem);
+    const assumed = parseMoneySigned(r['Assumed Budget']);
+    const revisions = parseMoneySigned(r['Revisions']);
+    const current = parseMoneySigned(r['Current Budget']);
+    const revColor = revisions < 0 ? 'var(--gt)' : (revisions > 0 ? 'var(--rt)' : 'var(--mu)');
+    const revArrow = revisions < 0 ? '&#9660;' : (revisions > 0 ? '&#9650;' : '');
+    const rowStyle = isTotal ? ' style="font-weight:700;border-top:1px solid var(--gd)"' : (isContingency ? ' style="font-style:italic;color:var(--mu)"' : '');
+    return `<tr${rowStyle}>
+      <td>${lineItem}</td>
+      <td style="color:var(--mu);font-size:12px">${(r['Contractor']||'').trim()||'&mdash;'}</td>
+      <td class="r">${assumed?moneyF(assumed):'&mdash;'}</td>
+      <td class="r" style="color:${revColor}">${revisions?revArrow+' '+moneyF(Math.abs(revisions)):'&mdash;'}</td>
+      <td class="r">${current?moneyF(current):'&mdash;'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderBudgetNotes() {
+  const el = document.getElementById('budget-notes-list');
+  if (!localBudgetNotes.length) {
+    el.innerHTML = '<div class="empty" style="padding:10px 0">No notes yet.</div>';
+    return;
+  }
+  const sorted = [...localBudgetNotes].sort((a,b)=> b.id.localeCompare(a.id));
+  el.innerHTML = sorted.map(n => `
+    <div style="padding:8px 0;border-bottom:1px solid var(--faint);display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+      <div>
+        <div style="font-size:11px;color:var(--mu);margin-bottom:2px">${n.date}</div>
+        <div style="font-size:13px;color:var(--txt);white-space:pre-wrap">${n.note}</div>
+      </div>
+      <button class="rm-btn" onclick="removeBudgetNote('${n.id}')" title="Remove">&#10005;</button>
+    </div>`).join('');
+}
+
+async function addBudgetNote() {
+  const input = document.getElementById('budget-note-input');
+  const val = input.value.trim();
+  if (!val) { showToast('Please enter a note.'); return; }
+  const dateStr = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  const id = 'bn_' + Date.now();
+  localBudgetNotes.push({ id, date: dateStr, note: val });
+  saveLS(BUDGET_NOTES_KEY, localBudgetNotes);
+  input.value = '';
+  renderBudgetNotes();
+  showToast('Saving note to the sheet...');
+  const ok = await writeToSheet('budgetnote', { date: dateStr, note: val });
+  showToast(ok ? 'Note saved to the sheet.' : "Saved here, but couldn't reach the sheet just now.");
+}
+
+function removeBudgetNote(id) {
+  localBudgetNotes = localBudgetNotes.filter(x => x.id !== id);
+  saveLS(BUDGET_NOTES_KEY, localBudgetNotes);
+  renderBudgetNotes();
 }
 
 // ── PSA ────────────────────────────────────────────────────────────────────
@@ -1110,16 +1249,19 @@ async function fetchAll() {
   localOI = loadLS(OI_KEY);
   localEvents = loadLS(CAL_KEY);
   localContacts = loadLS(CONTACTS_KEY);
+  localBudgetNotes = loadLS(BUDGET_NOTES_KEY);
   renderInvoiceTable();
   renderOpenItems();
   renderCalendar();
   renderUpcoming();
   renderContacts();
+  renderBudgetNotes();
 
   // Fetch all CSV sources independently
   safeCSV(CSV.countdowns).then(d => renderMilestones(d));
   safeCSV(CSV.planStatus).then(d => renderEngineering(d));
   safeCSV(CSV.costTracker).then(d => renderCostTracker(d));
+  safeCSV(CSV.budget).then(d => renderBudget(d));
   safeCSV(CSV.psa).then(d => renderPSA(d));
   safeCSV(CSV.loan).then(d => renderLoan(d));
   safeCSV(CSV.openItems).then(d => {
