@@ -806,7 +806,6 @@ function renderBudget(rows) {
 
   metEl.innerHTML = `
     <div class="met"><div class="met-lbl">Assumed budget</div><div class="met-val">${moneyF(totalAssumed)}</div></div>
-    <div class="met"><div class="met-lbl">Assumed $/lot (58)</div><div class="met-val" style="color:var(--mu)">${moneyF(totalAssumed/LOTS)}</div></div>
     <div class="met"><div class="met-lbl">Current budget</div><div class="met-val" style="color:var(--gold)">${moneyF(totalCurrent)}</div></div>
     <div class="met"><div class="met-lbl">Current $/lot (58)</div><div class="met-val" style="color:var(--mu)">${moneyF(totalCurrent/LOTS)}</div></div>
     <div class="met"><div class="met-lbl">Net change</div><div class="met-val" style="color:${totalVariance<0?'var(--gt)':(totalVariance>0?'var(--rt)':'var(--mu)')}">${totalVariance===0?'&#8212;':(totalVariance<0?'-':'+')+moneyF(Math.abs(totalVariance))}</div></div>
