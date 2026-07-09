@@ -417,6 +417,9 @@ const INV_KEY = 'clc_inv_v2';
 const OI_KEY  = 'clc_oi_v2';
 const CAL_KEY  = 'clc_cal_v1';
 const CONTACTS_KEY = 'clc_contacts_v1';
+
+// Apps Script write-back relay — sends new entries to the private sheet
+const WRITE_URL = 'https://script.google.com/macros/s/AKfycbxk4JKzdE7S2gyAE_vVab-G3_5LWRlHJRGGuTSAWXXRM7VBrfmUtdLevLgoKSsY_JjnVg/exec';
 let localEvents = [];
 let contacts = [];
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
@@ -465,6 +468,31 @@ async function safeCSV(url) {
 // ── STORAGE ────────────────────────────────────────────────────────────────
 function loadLS(key) { try { return JSON.parse(localStorage.getItem(key)||'[]'); } catch { return []; } }
 function saveLS(key, data) { try { localStorage.setItem(key, JSON.stringify(data)); } catch {} }
+
+// ── WRITE-BACK ─────────────────────────────────────────────────────────────
+// Sends a new entry to the Apps Script relay, which appends it to the
+// matching tab in the private sheet. text/plain avoids a CORS preflight
+// that Apps Script web apps don't handle.
+async function writeToSheet(type, data) {
+  try {
+    const res = await fetch(WRITE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ type, data })
+    });
+    const json = await res.json();
+    return !!json.ok;
+  } catch (e) {
+    console.warn('Write-back failed:', e.message);
+    return false;
+  }
+}
+
+// Once a locally-added item shows up in the sheet data (via the CSV feed),
+// this drops the local copy so it doesn't display twice.
+function pruneSynced(localArr, sheetArr, matchFn) {
+  return localArr.filter(loc => !sheetArr.some(s => matchFn(loc, s)));
+}
 
 // ── TOAST ──────────────────────────────────────────────────────────────────
 function showToast(msg) {
@@ -642,7 +670,7 @@ function renderInvoiceTable() {
   body.innerHTML += `<tr class="tot-row"><td colspan="4">Total</td><td class="r">${moneyF(total)}</td><td></td></tr>`;
 }
 
-function addInvoice() {
+async function addInvoice() {
   const consultant = document.getElementById('inv-consultant').value.trim();
   const invNum     = document.getElementById('inv-number').value.trim();
   const invDate    = document.getElementById('inv-date').value;
@@ -660,7 +688,9 @@ function addInvoice() {
   saveLS(INV_KEY, localInvoices);
   ['inv-consultant','inv-number','inv-date','inv-category','inv-amount'].forEach(fid=>{document.getElementById(fid).value='';});
   renderInvoiceTable();
-  showToast('Invoice added. Add to the Invoices tab in the sheet to make it permanent.');
+  showToast('Saving invoice to the sheet...');
+  const ok = await writeToSheet('invoice', { consultant, invNum, date: dateStr, amount, category });
+  showToast(ok ? 'Invoice saved to the sheet.' : "Saved here, but couldn't reach the sheet just now.");
 }
 
 function removeInvoice(id) {
@@ -790,7 +820,7 @@ function renderOpenItems() {
   }).join('');
 }
 
-function addOpenItem() {
+async function addOpenItem() {
   const input=document.getElementById('oi-input');
   const val=input.value.trim();
   if (!val){showToast('Please enter an issue description.');return;}
@@ -798,7 +828,9 @@ function addOpenItem() {
   saveLS(OI_KEY,localOI);
   input.value='';
   renderOpenItems();
-  showToast('Open item added.');
+  showToast('Saving to the sheet...');
+  const ok = await writeToSheet('openitem', { issue: val, status: 'Open' });
+  showToast(ok ? 'Open item saved to the sheet.' : "Saved here, but couldn't reach the sheet just now.");
 }
 
 function cycleOI(id) {
@@ -828,7 +860,7 @@ function toggleCalCreator() {
   }
 }
 
-function addCalEvent() {
+async function addCalEvent() {
   const date      = document.getElementById('ce-date').value;
   const title     = document.getElementById('ce-title').value.trim();
   const category  = document.getElementById('ce-category').value;
@@ -854,7 +886,9 @@ function addCalEvent() {
 
   // Merge into allEvents and re-render
   rebuildAllEvents();
-  showToast('Date added to calendar.');
+  showToast('Saving date to the sheet...');
+  const ok = await writeToSheet('calendar', { date, title, category, attendees, notes });
+  showToast(ok ? 'Date saved to the sheet.' : "Saved here, but couldn't reach the sheet just now.");
 }
 
 function removeCalEvent(id) {
@@ -1027,7 +1061,7 @@ function renderContacts() {
   </tr>`).join('');
 }
 
-function addContact() {
+async function addContact() {
   const name    = document.getElementById('ct-name').value.trim();
   const company = document.getElementById('ct-company').value.trim();
   const cell    = document.getElementById('ct-cell').value.trim();
@@ -1045,7 +1079,9 @@ function addContact() {
   });
 
   renderContacts();
-  showToast('Contact added.');
+  showToast('Saving contact to the sheet...');
+  const ok = await writeToSheet('contact', { name, company, cell, office, email });
+  showToast(ok ? 'Contact saved to the sheet.' : "Saved here, but couldn't reach the sheet just now.");
 }
 
 function removeContact(id) {
@@ -1077,22 +1113,44 @@ async function fetchAll() {
   safeCSV(CSV.loan).then(d => renderLoan(d));
   safeCSV(CSV.openItems).then(d => {
     sheetOI = d.filter(r => (r['Issue']||'').trim());
+    const before = localOI.length;
+    localOI = pruneSynced(localOI, sheetOI, (loc, s) =>
+      (loc.issue||'').trim() === (s['Issue']||'').trim()
+    );
+    if (localOI.length !== before) saveLS(OI_KEY, localOI);
     renderOpenItems();
   });
   safeCSV(CSV.invoices).then(d => {
     sheetInvoices = d.filter(r => (r['Consultant Name']||'').trim());
+    const before = localInvoices.length;
+    localInvoices = pruneSynced(localInvoices, sheetInvoices, (loc, s) =>
+      (loc.consultant||'').trim() === (s['Consultant Name']||'').trim() &&
+      (loc.invNum||'').trim() === (s['Invoice Number']||'').trim() &&
+      Math.abs((loc.amount||0) - (toNum(s['Invoice Amount'])||0)) < 0.01
+    );
+    if (localInvoices.length !== before) saveLS(INV_KEY, localInvoices);
     renderInvoiceTable();
   });
 
   // Merge both calendars
   Promise.all([safeCSV(CSV.calInternal), safeCSV(CSV.calShared)]).then(([ci, cs]) => {
+    const ciRows = ci.filter(r=>(r['Date']||'').trim());
+    const csRows = cs.filter(r=>(r['Date']||'').trim());
+
+    const before = localEvents.length;
+    localEvents = pruneSynced(localEvents, ciRows, (loc, s) =>
+      (loc.date||'').trim() === (s['Date']||'').trim() &&
+      (loc.title||'').trim() === (s['Event Title']||'').trim()
+    );
+    if (localEvents.length !== before) saveLS(CAL_KEY, localEvents);
+
     allEvents = [
-      ...ci.filter(r=>(r['Date']||'').trim()).map(r=>({
+      ...ciRows.map(r=>({
         date:(r['Date']||'').trim(), title:(r['Event Title']||'').trim(),
         category:(r['Category']||'').trim(), attendees:(r['Attendees']||'').trim(),
         notes:(r['Notes']||'').trim(), source:'internal'
       })),
-      ...cs.filter(r=>(r['Date']||'').trim()).map(r=>({
+      ...csRows.map(r=>({
         date:(r['Date']||'').trim(), title:(r['Event']||r['Event Title']||'').trim(),
         category:(r['Category']||'').trim(), attendees:(r['Attendees']||'').trim(),
         notes:(r['Notes']||'').trim(), source:'shared'
